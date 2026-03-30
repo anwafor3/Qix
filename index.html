@@ -693,7 +693,16 @@ function buildBorderPath() {
 function startGame() {
   document.getElementById('title-screen').style.display = 'none';
   document.getElementById('game-over-screen').style.display = 'none';
-  initAudio();
+  function initAudio() {
+  if (audioCtx) {
+    audioCtx.resume();
+    return;
+  }
+  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  masterGain = audioCtx.createGain();
+  masterGain.gain.value = 0.35;
+  masterGain.connect(audioCtx.destination);
+}
   score = 0; lives = 3; level = 1;
   initLevel();
   gameActive = true;
