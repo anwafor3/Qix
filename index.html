@@ -1,0 +1,816 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>QIX</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@400;700;900&display=swap');
+
+  :root {
+    --bg: #000408;
+    --grid: #0a1a2a;
+    --claimed: rgba(0, 200, 255, 0.12);
+    --claimed-border: #00c8ff;
+    --player: #00ffcc;
+    --trail: #ff6a00;
+    --qix1: #ff2d55;
+    --qix2: #ff9f0a;
+    --sparx: #ffe600;
+    --ui: #00c8ff;
+    --danger: #ff2d55;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    font-family: 'Share Tech Mono', monospace;
+    color: var(--ui);
+    overflow: hidden;
+  }
+
+  #title-screen, #game-over-screen {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background: var(--bg);
+    z-index: 10;
+  }
+
+  .title-logo {
+    font-family: 'Orbitron', monospace;
+    font-size: clamp(4rem, 12vw, 9rem);
+    font-weight: 900;
+    letter-spacing: 0.2em;
+    color: transparent;
+    background: linear-gradient(135deg, #ff2d55, #ff6a00, #ffe600, #00ffcc, #00c8ff);
+    background-size: 300% 300%;
+    -webkit-background-clip: text;
+    background-clip: text;
+    animation: gradient-shift 3s ease infinite, flicker 5s step-end infinite;
+    text-shadow: none;
+    filter: drop-shadow(0 0 30px rgba(0,200,255,0.5));
+  }
+
+  @keyframes gradient-shift {
+    0%,100% { background-position: 0% 50%; }
+    50% { background-position: 100% 50%; }
+  }
+
+  @keyframes flicker {
+    0%,96%,100% { opacity: 1; }
+    97% { opacity: 0.7; }
+    98% { opacity: 1; }
+    99% { opacity: 0.5; }
+  }
+
+  .subtitle {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: clamp(0.6rem, 2vw, 0.9rem);
+    letter-spacing: 0.5em;
+    color: #ffffff44;
+    margin-top: -0.5em;
+    margin-bottom: 2rem;
+    text-transform: uppercase;
+  }
+
+  .instructions {
+    font-size: 0.85rem;
+    line-height: 2;
+    text-align: center;
+    color: #aaa;
+    max-width: 380px;
+    border: 1px solid #00c8ff22;
+    padding: 1.5rem 2rem;
+    background: #00c8ff08;
+    margin-bottom: 2.5rem;
+  }
+
+  .instructions span { color: var(--player); }
+  .instructions .danger { color: var(--danger); }
+
+  .start-btn {
+    font-family: 'Orbitron', monospace;
+    font-size: 0.9rem;
+    letter-spacing: 0.3em;
+    color: var(--bg);
+    background: var(--ui);
+    border: none;
+    padding: 0.8em 2.5em;
+    cursor: pointer;
+    animation: pulse-btn 1.5s ease-in-out infinite;
+    text-transform: uppercase;
+  }
+
+  @keyframes pulse-btn {
+    0%,100% { box-shadow: 0 0 10px var(--ui), 0 0 30px var(--ui); }
+    50% { box-shadow: 0 0 20px var(--ui), 0 0 60px var(--ui); }
+  }
+
+  .start-btn:hover { background: var(--player); }
+
+  #hud {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    width: min(600px, 95vw);
+    padding: 0.4rem 0;
+    font-size: 0.75rem;
+    letter-spacing: 0.1em;
+  }
+
+  .hud-label { color: #ffffff44; font-size: 0.6rem; display: block; }
+  .hud-val { font-family: 'Orbitron', monospace; font-size: 1rem; font-weight: 700; }
+
+  #claimed-pct { color: var(--player); }
+  #score-val { color: var(--ui); }
+  #lives-val { color: var(--sparx); }
+
+  #canvas-wrap {
+    position: relative;
+    border: 1px solid #00c8ff18;
+  }
+
+  canvas { display: block; }
+
+  #percent-bar-wrap {
+    width: min(600px, 95vw);
+    height: 4px;
+    background: #ffffff10;
+    margin-top: 6px;
+    position: relative;
+  }
+
+  #percent-bar {
+    height: 100%;
+    background: linear-gradient(90deg, #00ffcc, #00c8ff);
+    width: 0%;
+    transition: width 0.15s;
+    box-shadow: 0 0 8px #00ffcc;
+  }
+
+  #percent-bar.danger {
+    background: linear-gradient(90deg, var(--danger), #ff6a00);
+    box-shadow: 0 0 8px var(--danger);
+  }
+
+  .go-title {
+    font-family: 'Orbitron', monospace;
+    font-size: clamp(2rem, 8vw, 5rem);
+    font-weight: 900;
+    letter-spacing: 0.15em;
+    color: var(--danger);
+    text-shadow: 0 0 40px var(--danger);
+    margin-bottom: 0.5rem;
+  }
+
+  .go-score {
+    font-family: 'Orbitron', monospace;
+    font-size: 1.5rem;
+    color: var(--ui);
+    margin-bottom: 2rem;
+  }
+
+  #game-over-screen { display: none; }
+
+  .scanlines {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    background: repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 2px,
+      rgba(0,0,0,0.08) 2px,
+      rgba(0,0,0,0.08) 4px
+    );
+    z-index: 100;
+  }
+
+  .level-badge {
+    font-size: 0.6rem;
+    letter-spacing: 0.3em;
+    color: #ffffff33;
+    margin-top: 4px;
+  }
+</style>
+</head>
+<body>
+
+<div class="scanlines"></div>
+
+<!-- TITLE -->
+<div id="title-screen">
+  <div class="title-logo">QIX</div>
+  <div class="subtitle">Arcade · 1981 · Recreation</div>
+  <div class="instructions">
+    <span>ARROW KEYS</span> — move your marker<br>
+    <span>SPACE</span> — draw a line (claim territory)<br>
+    <span>SHIFT</span> — draw fast (less points)<br><br>
+    Claim <span>75%</span> of the field to advance.<br>
+    <span class="danger">Don't let the Qix touch your line</span><br>
+    while you're drawing it.<br>
+    <span class="danger">Sparx patrol the border.</span>
+  </div>
+  <button class="start-btn" onclick="startGame()">INSERT COIN</button>
+</div>
+
+<!-- GAME OVER -->
+<div id="game-over-screen">
+  <div class="go-title">GAME OVER</div>
+  <div class="go-score">SCORE: <span id="final-score">0</span></div>
+  <button class="start-btn" onclick="startGame()">PLAY AGAIN</button>
+</div>
+
+<!-- HUD -->
+<div id="hud">
+  <div>
+    <span class="hud-label">SCORE</span>
+    <span class="hud-val" id="score-val">0</span>
+  </div>
+  <div style="text-align:center">
+    <span class="hud-label">CLAIMED</span>
+    <span class="hud-val" id="claimed-pct">0%</span>
+  </div>
+  <div style="text-align:right">
+    <span class="hud-label">LIVES</span>
+    <span class="hud-val" id="lives-val">❤ ❤ ❤</span>
+  </div>
+</div>
+
+<div id="canvas-wrap">
+  <canvas id="c"></canvas>
+</div>
+<div id="percent-bar-wrap"><div id="percent-bar"></div></div>
+<div class="level-badge" id="level-badge">LEVEL 1</div>
+
+<script>
+// ─────────────────────────────────────────────
+//  CONFIG
+// ─────────────────────────────────────────────
+const COLS = 80, ROWS = 60;
+const CELL = 8;
+const W = COLS * CELL, H = ROWS * CELL;
+const WIN_PCT = 75;
+
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+canvas.width = W; canvas.height = H;
+
+// ─────────────────────────────────────────────
+//  STATE
+// ─────────────────────────────────────────────
+let grid, player, qixArr, sparxArr;
+let drawing, trailCells;
+let score, lives, level, gameActive;
+let claimedPct;
+let keys = {};
+let animFrame;
+let lastTime = 0;
+let moveAccum = 0;
+const MOVE_INTERVAL = 80; // ms per move
+
+// ─────────────────────────────────────────────
+//  GRID CELLS: 0=unclaimed, 1=border/claimed, 2=trail
+// ─────────────────────────────────────────────
+function initGrid() {
+  grid = Array.from({length: ROWS}, () => new Uint8Array(COLS));
+  // border
+  for (let c = 0; c < COLS; c++) { grid[0][c] = 1; grid[ROWS-1][c] = 1; }
+  for (let r = 0; r < ROWS; r++) { grid[r][0] = 1; grid[r][COLS-1] = 1; }
+}
+
+// ─────────────────────────────────────────────
+//  FLOOD FILL — returns set of cells reachable without crossing border/trail
+// ─────────────────────────────────────────────
+function floodFill(startR, startC, gridSnap) {
+  const visited = new Set();
+  const stack = [[startR, startC]];
+  const key = (r,c) => r * COLS + c;
+  while (stack.length) {
+    const [r,c] = stack.pop();
+    const k = key(r,c);
+    if (visited.has(k)) continue;
+    if (r < 0 || r >= ROWS || c < 0 || c >= COLS) continue;
+    if (gridSnap[r][c] === 1) continue;
+    visited.add(k);
+    stack.push([r-1,c],[r+1,c],[r,c-1],[r,c+1]);
+  }
+  return visited;
+}
+
+// ─────────────────────────────────────────────
+//  CLAIM — flood fill from all Qix positions, everything else is claimed
+// ─────────────────────────────────────────────
+function claimTerritory() {
+  // convert trail to border
+  for (let r=0;r<ROWS;r++) for (let c=0;c<COLS;c++) if(grid[r][c]===2) grid[r][c]=1;
+
+  // find all cells reachable from any Qix
+  const snap = grid.map(row => Uint8Array.from(row));
+  const qixReachable = new Set();
+  for (const q of qixArr) {
+    const qr = Math.round(q.y / CELL);
+    const qc = Math.round(q.x / CELL);
+    const region = floodFill(qr, qc, snap);
+    region.forEach(k => qixReachable.add(k));
+  }
+
+  // claim everything NOT reachable from Qix (and not already border)
+  let newlyClaimed = 0;
+  for (let r=0;r<ROWS;r++) for (let c=0;c<COLS;c++) {
+    const k = r * COLS + c;
+    if (grid[r][c] === 0 && !qixReachable.has(k)) {
+      grid[r][c] = 1;
+      newlyClaimed++;
+    }
+  }
+
+  // score
+  const scorePerCell = player.fast ? 1 : 2;
+  score += newlyClaimed * scorePerCell * level;
+
+  updateClaimedPct();
+}
+
+function countClaimed() {
+  let n = 0;
+  for (let r=0;r<ROWS;r++) for (let c=0;c<COLS;c++) if(grid[r][c]===1) n++;
+  return n;
+}
+
+function updateClaimedPct() {
+  const total = ROWS * COLS;
+  const pct = Math.floor((countClaimed() / total) * 100);
+  claimedPct = pct;
+  document.getElementById('claimed-pct').textContent = pct + '%';
+  const bar = document.getElementById('percent-bar');
+  bar.style.width = Math.min(pct, 100) + '%';
+  bar.classList.toggle('danger', pct < 30);
+}
+
+// ─────────────────────────────────────────────
+//  QIX — the strange bouncing thing
+// ─────────────────────────────────────────────
+class Qix {
+  constructor(speed) {
+    this.x = W/2 + (Math.random()-0.5)*80;
+    this.y = H/2 + (Math.random()-0.5)*80;
+    this.vx = (Math.random()*2-1) * speed;
+    this.vy = (Math.random()*2-1) * speed;
+    this.history = [];
+    this.color1 = `hsl(${Math.random()*60}deg, 100%, 60%)`;
+    this.color2 = `hsl(${Math.random()*60+180}deg, 100%, 60%)`;
+    this.angle = Math.random() * Math.PI;
+    this.angleV = (Math.random()-0.5)*0.05;
+    this.len = 40 + Math.random()*30;
+  }
+
+  update(dt) {
+    this.history.push({x:this.x, y:this.y});
+    if(this.history.length > 8) this.history.shift();
+
+    this.x += this.vx * dt * 0.06;
+    this.y += this.vy * dt * 0.06;
+    this.angle += this.angleV;
+
+    // bounce off claimed/border
+    const r = Math.round(this.y/CELL), c = Math.round(this.x/CELL);
+    const nr = Math.round((this.y+this.vy*dt*0.06)/CELL);
+    const nc = Math.round((this.x+this.vx*dt*0.06)/CELL);
+
+    if (nr < 0 || nr >= ROWS || (grid[nr] && grid[nr][c] === 1)) this.vy *= -1;
+    if (nc < 0 || nc >= COLS || (grid[r] && grid[r][nc] === 1)) this.vx *= -1;
+
+    this.x = Math.max(CELL, Math.min(W-CELL, this.x));
+    this.y = Math.max(CELL, Math.min(H-CELL, this.y));
+  }
+
+  draw() {
+    for (let i=0; i<this.history.length; i++) {
+      const h = this.history[i];
+      const alpha = i/this.history.length * 0.4;
+      ctx.save();
+      ctx.translate(h.x, h.y);
+      ctx.rotate(this.angle + i*0.1);
+      ctx.strokeStyle = this.color1;
+      ctx.globalAlpha = alpha;
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(-this.len*(i/this.history.length), 0);
+      ctx.lineTo(this.len*(i/this.history.length), 0);
+      ctx.stroke();
+      ctx.rotate(Math.PI/4);
+      ctx.strokeStyle = this.color2;
+      ctx.beginPath();
+      ctx.moveTo(-this.len*0.7*(i/this.history.length), 0);
+      ctx.lineTo(this.len*0.7*(i/this.history.length), 0);
+      ctx.stroke();
+      ctx.restore();
+    }
+    // main body
+    ctx.save();
+    ctx.translate(this.x, this.y);
+    ctx.rotate(this.angle);
+    const g = ctx.createLinearGradient(-this.len, 0, this.len, 0);
+    g.addColorStop(0, this.color1);
+    g.addColorStop(0.5, '#fff');
+    g.addColorStop(1, this.color2);
+    ctx.strokeStyle = g;
+    ctx.lineWidth = 3;
+    ctx.shadowColor = this.color1;
+    ctx.shadowBlur = 12;
+    ctx.beginPath();
+    ctx.moveTo(-this.len, 0); ctx.lineTo(this.len, 0);
+    ctx.stroke();
+    ctx.rotate(Math.PI/3);
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(-this.len*0.7, 0); ctx.lineTo(this.len*0.7, 0);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // does Qix overlap a trail cell?
+  hitsTrail() {
+    for (const cell of trailCells) {
+      const cx = cell.c * CELL + CELL/2;
+      const cy = cell.r * CELL + CELL/2;
+      const dist = Math.hypot(this.x - cx, this.y - cy);
+      if (dist < CELL * 1.5) return true;
+    }
+    return false;
+  }
+}
+
+// ─────────────────────────────────────────────
+//  SPARX — enemies that patrol the border
+// ─────────────────────────────────────────────
+class Sparx {
+  constructor(dir) {
+    this.r = 0; this.c = 0;
+    this.dir = dir; // 1 or -1
+    this.pathIdx = 0;
+    this.path = buildBorderPath();
+    // randomize start
+    this.pathIdx = Math.floor(Math.random() * this.path.length);
+    const pos = this.path[this.pathIdx];
+    this.r = pos.r; this.c = pos.c;
+    this.speed = 1;
+    this.stepAccum = 0;
+    this.stepInterval = 120;
+    this.hue = Math.random() * 60 + 40; // yellow-orange
+  }
+
+  update(dt) {
+    this.stepAccum += dt;
+    while (this.stepAccum >= this.stepInterval) {
+      this.stepAccum -= this.stepInterval;
+      this.pathIdx = (this.pathIdx + this.dir + this.path.length) % this.path.length;
+      const pos = this.path[this.pathIdx];
+      this.r = pos.r; this.c = pos.c;
+    }
+  }
+
+  draw() {
+    const x = this.c * CELL + CELL/2;
+    const y = this.r * CELL + CELL/2;
+    ctx.save();
+    ctx.shadowColor = `hsl(${this.hue},100%,60%)`;
+    ctx.shadowBlur = 10;
+    ctx.fillStyle = `hsl(${this.hue},100%,60%)`;
+    ctx.beginPath();
+    // diamond
+    ctx.moveTo(x, y - CELL*0.6);
+    ctx.lineTo(x + CELL*0.6, y);
+    ctx.lineTo(x, y + CELL*0.6);
+    ctx.lineTo(x - CELL*0.6, y);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = '#fff';
+    ctx.beginPath();
+    ctx.arc(x, y, CELL*0.15, 0, Math.PI*2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  hitsPlayer() {
+    return this.r === player.r && this.c === player.c;
+  }
+}
+
+function buildBorderPath() {
+  // Build the current claimed border as an ordered path
+  // We'll walk the outermost solid border of the grid
+  const path = [];
+  // top row left to right
+  for (let c=0; c<COLS; c++) if(grid[0][c]===1) path.push({r:0,c});
+  // right col top to bottom
+  for (let r=1; r<ROWS; r++) if(grid[r][COLS-1]===1) path.push({r,c:COLS-1});
+  // bottom row right to left
+  for (let c=COLS-2; c>=0; c--) if(grid[ROWS-1][c]===1) path.push({r:ROWS-1,c});
+  // left col bottom to top
+  for (let r=ROWS-2; r>0; r--) if(grid[r][0]===1) path.push({r,c:0});
+  return path;
+}
+
+// ─────────────────────────────────────────────
+//  INIT GAME
+// ─────────────────────────────────────────────
+function startGame() {
+  document.getElementById('title-screen').style.display = 'none';
+  document.getElementById('game-over-screen').style.display = 'none';
+  score = 0; lives = 3; level = 1;
+  initLevel();
+  gameActive = true;
+  if (animFrame) cancelAnimationFrame(animFrame);
+  lastTime = performance.now();
+  animFrame = requestAnimationFrame(loop);
+}
+
+function initLevel() {
+  initGrid();
+  drawing = false;
+  trailCells = [];
+
+  // player starts on border, middle of top
+  player = {
+    r: 0, c: Math.floor(COLS/2),
+    fast: false,
+    blinkTimer: 0,
+    invincible: 0
+  };
+
+  // Qix — more at higher levels
+  const qixCount = Math.min(level, 3);
+  qixArr = [];
+  for (let i=0; i<qixCount; i++) qixArr.push(new Qix(1.5 + level * 0.4));
+
+  // Sparx — faster at higher levels
+  sparxArr = [];
+  const sparxCount = 2 + level;
+  for (let i=0; i<sparxCount; i++) {
+    const s = new Sparx(i%2===0 ? 1 : -1);
+    s.stepInterval = Math.max(50, 120 - level*10);
+    sparxArr.push(s);
+  }
+
+  updateClaimedPct();
+  updateHUD();
+  document.getElementById('level-badge').textContent = 'LEVEL ' + level;
+}
+
+function updateHUD() {
+  document.getElementById('score-val').textContent = score;
+  document.getElementById('lives-val').textContent = '❤ '.repeat(lives).trim();
+}
+
+// ─────────────────────────────────────────────
+//  DEATH
+// ─────────────────────────────────────────────
+function die() {
+  // clear trail
+  for (const cell of trailCells) grid[cell.r][cell.c] = 0;
+  trailCells = [];
+  drawing = false;
+  lives--;
+  updateHUD();
+  if (lives <= 0) {
+    endGame();
+    return;
+  }
+  // reset player to border, brief invincibility
+  player.r = 0; player.c = Math.floor(COLS/2);
+  player.invincible = 2000;
+}
+
+function endGame() {
+  gameActive = false;
+  document.getElementById('final-score').textContent = score;
+  document.getElementById('game-over-screen').style.display = 'flex';
+}
+
+// ─────────────────────────────────────────────
+//  INPUT
+// ─────────────────────────────────────────────
+document.addEventListener('keydown', e => {
+  keys[e.code] = true;
+  if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Space'].includes(e.key) ||
+      e.code === 'Space') e.preventDefault();
+});
+document.addEventListener('keyup', e => { keys[e.code] = false; });
+
+// ─────────────────────────────────────────────
+//  UPDATE
+// ─────────────────────────────────────────────
+function update(dt) {
+  if (!gameActive) return;
+
+  // invincibility
+  if (player.invincible > 0) player.invincible -= dt;
+
+  // drawing state
+  const wantDraw = keys['Space'];
+  player.fast = keys['ShiftLeft'] || keys['ShiftRight'];
+
+  if (!wantDraw && drawing) {
+    // stopped drawing — claim!
+    if (trailCells.length > 0 && onBorder(player.r, player.c)) {
+      claimTerritory();
+      trailCells = [];
+      drawing = false;
+      // rebuild sparx path
+      sparxArr.forEach(s => {
+        s.path = buildBorderPath();
+        s.pathIdx = s.pathIdx % s.path.length;
+      });
+      updateHUD();
+      // check win
+      if (claimedPct >= WIN_PCT) {
+        level++;
+        setTimeout(() => initLevel(), 600);
+        return;
+      }
+    } else if (!onBorder(player.r, player.c)) {
+      // released draw while not on border — trail stays until they reach border or die
+    }
+  }
+
+  // movement
+  moveAccum += dt;
+  const interval = player.fast ? MOVE_INTERVAL * 0.5 : MOVE_INTERVAL;
+  if (moveAccum >= interval) {
+    moveAccum = 0;
+    let dr=0, dc=0;
+    if (keys['ArrowUp']) dr=-1;
+    else if (keys['ArrowDown']) dr=1;
+    else if (keys['ArrowLeft']) dc=-1;
+    else if (keys['ArrowRight']) dc=1;
+
+    if (dr!==0 || dc!==0) {
+      const nr = player.r + dr;
+      const nc = player.c + dc;
+      if (nr>=0 && nr<ROWS && nc>=0 && nc<COLS) {
+        if (!wantDraw) {
+          // can only move on border/claimed when not drawing
+          if (grid[nr][nc] === 1) {
+            player.r = nr; player.c = nc;
+          }
+        } else {
+          // drawing — can move into unclaimed territory
+          if (grid[nr][nc] === 0) {
+            drawing = true;
+            grid[player.r][player.c] = 2;
+            trailCells.push({r:player.r, c:player.c});
+            player.r = nr; player.c = nc;
+          } else if (grid[nr][nc] === 1) {
+            // stepped back onto border while drawing
+            if (drawing) {
+              grid[player.r][player.c] = 2;
+              trailCells.push({r:player.r, c:player.c});
+            }
+            player.r = nr; player.c = nc;
+            if (drawing && onBorder(player.r, player.c)) {
+              claimTerritory();
+              trailCells = [];
+              drawing = false;
+              sparxArr.forEach(s => { s.path = buildBorderPath(); s.pathIdx = s.pathIdx % s.path.length; });
+              updateHUD();
+              if (claimedPct >= WIN_PCT) { level++; setTimeout(()=>initLevel(),600); return; }
+            }
+          } else if (grid[nr][nc] === 2) {
+            // hit own trail — die
+            if (player.invincible <= 0) die();
+            return;
+          }
+        }
+      }
+    }
+  }
+
+  // update Qix
+  for (const q of qixArr) {
+    q.update(dt);
+    // Qix hits trail?
+    if (drawing && q.hitsTrail() && player.invincible <= 0) { die(); return; }
+  }
+
+  // update Sparx
+  for (const s of sparxArr) {
+    s.update(dt);
+    if (s.hitsPlayer() && player.invincible <= 0) { die(); return; }
+  }
+
+  // Qix near player while NOT drawing (on border = safe, mid-draw = danger)
+  if (!drawing) {
+    const px = player.c * CELL + CELL/2;
+    const py = player.r * CELL + CELL/2;
+    for (const q of qixArr) {
+      if (Math.hypot(q.x - px, q.y - py) < CELL*1.2 && player.invincible <= 0) { die(); return; }
+    }
+  }
+}
+
+function onBorder(r, c) {
+  return grid[r][c] === 1;
+}
+
+// ─────────────────────────────────────────────
+//  DRAW
+// ─────────────────────────────────────────────
+function draw() {
+  ctx.clearRect(0, 0, W, H);
+
+  // background grid dots
+  ctx.fillStyle = '#0a1825';
+  ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = '#1a3050';
+  for (let r=0;r<ROWS;r+=4) for(let c=0;c<COLS;c+=4) {
+    ctx.fillRect(c*CELL+CELL/2-0.5, r*CELL+CELL/2-0.5, 1, 1);
+  }
+
+  // claimed cells
+  for (let r=0;r<ROWS;r++) for(let c=0;c<COLS;c++) {
+    if (grid[r][c]===1) {
+      ctx.fillStyle = 'rgba(0,200,255,0.07)';
+      ctx.fillRect(c*CELL, r*CELL, CELL, CELL);
+    }
+  }
+
+  // border lines
+  ctx.strokeStyle = '#00c8ff';
+  ctx.lineWidth = 1.5;
+  ctx.shadowColor = '#00c8ff';
+  ctx.shadowBlur = 6;
+  // draw claimed region outline by scanning
+  ctx.beginPath();
+  for (let r=0;r<ROWS;r++) for(let c=0;c<COLS;c++) {
+    if (grid[r][c]===1) {
+      const x=c*CELL, y=r*CELL;
+      if (r===0||grid[r-1][c]!==1) { ctx.moveTo(x,y); ctx.lineTo(x+CELL,y); }
+      if (r===ROWS-1||grid[r+1][c]!==1) { ctx.moveTo(x,y+CELL); ctx.lineTo(x+CELL,y+CELL); }
+      if (c===0||grid[r][c-1]!==1) { ctx.moveTo(x,y); ctx.lineTo(x,y+CELL); }
+      if (c===COLS-1||grid[r][c+1]!==1) { ctx.moveTo(x+CELL,y); ctx.lineTo(x+CELL,y+CELL); }
+    }
+  }
+  ctx.stroke();
+  ctx.shadowBlur = 0;
+
+  // trail
+  for (const cell of trailCells) {
+    const x=cell.c*CELL, y=cell.r*CELL;
+    ctx.fillStyle = player.fast ? 'rgba(255,106,0,0.5)' : 'rgba(255,106,0,0.8)';
+    ctx.shadowColor = '#ff6a00';
+    ctx.shadowBlur = 8;
+    ctx.fillRect(x+1, y+1, CELL-2, CELL-2);
+  }
+  ctx.shadowBlur = 0;
+
+  // Qix
+  for (const q of qixArr) q.draw();
+
+  // Sparx
+  for (const s of sparxArr) s.draw();
+
+  // player
+  const px = player.c*CELL + CELL/2;
+  const py = player.r*CELL + CELL/2;
+  const blink = player.invincible > 0 && Math.floor(Date.now()/100)%2===0;
+  if (!blink) {
+    ctx.save();
+    ctx.shadowColor = '#00ffcc';
+    ctx.shadowBlur = 16;
+    ctx.fillStyle = '#00ffcc';
+    ctx.beginPath();
+    ctx.arc(px, py, CELL*0.55, 0, Math.PI*2);
+    ctx.fill();
+    ctx.fillStyle = '#000';
+    ctx.beginPath();
+    ctx.arc(px, py, CELL*0.2, 0, Math.PI*2);
+    ctx.fill();
+    ctx.restore();
+  }
+}
+
+// ─────────────────────────────────────────────
+//  LOOP
+// ─────────────────────────────────────────────
+function loop(ts) {
+  const dt = Math.min(ts - lastTime, 50);
+  lastTime = ts;
+  update(dt);
+  draw();
+  animFrame = requestAnimationFrame(loop);
+}
+</script>
+</body>
+</html>
