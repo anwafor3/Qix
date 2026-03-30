@@ -267,6 +267,169 @@ const ctx = canvas.getContext('2d');
 canvas.width = W; canvas.height = H;
 
 // ─────────────────────────────────────────────
+//  AUDIO ENGINE
+// ─────────────────────────────────────────────
+let audioCtx = null;
+let drawOsc = null, drawGain = null;   // continuous draw tone
+let drawLfo = null, drawLfoGain = null; // wobble on draw tone
+let masterGain = null;
+
+function initAudio() {
+  if (audioCtx) return;
+  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  masterGain = audioCtx.createGain();
+  masterGain.gain.value = 0.35;
+  masterGain.connect(audioCtx.destination);
+}
+
+// ── Draw tone: continuous oscillator, pitch rises with claimed %
+function startDrawTone(fast) {
+  if (!audioCtx) return;
+  stopDrawTone();
+
+  drawGain = audioCtx.createGain();
+  drawGain.gain.setValueAtTime(0, audioCtx.currentTime);
+  drawGain.gain.linearRampToValueAtTime(0.18, audioCtx.currentTime + 0.04);
+  drawGain.connect(masterGain);
+
+  drawOsc = audioCtx.createOscillator();
+  drawOsc.type = fast ? 'sawtooth' : 'square';
+  const basePitch = getDrawPitch();
+  drawOsc.frequency.value = basePitch;
+  drawOsc.connect(drawGain);
+
+  // LFO wobble
+  drawLfo = audioCtx.createOscillator();
+  drawLfo.frequency.value = fast ? 8 : 4;
+  drawLfoGain = audioCtx.createGain();
+  drawLfoGain.gain.value = fast ? 6 : 3;
+  drawLfo.connect(drawLfoGain);
+  drawLfoGain.connect(drawOsc.frequency);
+  drawLfo.start();
+  drawOsc.start();
+}
+
+function stopDrawTone() {
+  if (!drawOsc) return;
+  try {
+    drawGain.gain.setValueAtTime(drawGain.gain.value, audioCtx.currentTime);
+    drawGain.gain.linearRampToValueAtTime(0, audioCtx.currentTime + 0.06);
+    drawOsc.stop(audioCtx.currentTime + 0.07);
+    drawLfo.stop(audioCtx.currentTime + 0.07);
+  } catch(e) {}
+  drawOsc = null; drawGain = null; drawLfo = null; drawLfoGain = null;
+}
+
+function getDrawPitch() {
+  // 180 Hz at 0% claimed → 480 Hz at 75% claimed — tension rises as you near the win
+  const t = Math.min(claimedPct || 0, WIN_PCT) / WIN_PCT;
+  return 180 + t * 300;
+}
+
+function updateDrawPitch() {
+  if (!drawOsc || !audioCtx) return;
+  drawOsc.frequency.setTargetAtTime(getDrawPitch(), audioCtx.currentTime, 0.3);
+}
+
+// ── One-shot sound builder
+function playTone(freq, type, duration, gainVal, attack=0.01, decay=0.05) {
+  if (!audioCtx) return;
+  const g = audioCtx.createGain();
+  g.gain.setValueAtTime(0, audioCtx.currentTime);
+  g.gain.linearRampToValueAtTime(gainVal, audioCtx.currentTime + attack);
+  g.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + attack + decay + duration);
+  g.connect(masterGain);
+
+  const o = audioCtx.createOscillator();
+  o.type = type;
+  o.frequency.value = freq;
+  o.connect(g);
+  o.start();
+  o.stop(audioCtx.currentTime + attack + decay + duration + 0.05);
+}
+
+function playNoise(duration, gainVal, filterFreq=800) {
+  if (!audioCtx) return;
+  const bufSize = audioCtx.sampleRate * duration;
+  const buf = audioCtx.createBuffer(1, bufSize, audioCtx.sampleRate);
+  const data = buf.getChannelData(0);
+  for (let i=0; i<bufSize; i++) data[i] = Math.random()*2-1;
+
+  const src = audioCtx.createBufferSource();
+  src.buffer = buf;
+
+  const filt = audioCtx.createBiquadFilter();
+  filt.type = 'bandpass';
+  filt.frequency.value = filterFreq;
+  filt.Q.value = 0.8;
+
+  const g = audioCtx.createGain();
+  g.gain.setValueAtTime(gainVal, audioCtx.currentTime);
+  g.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
+
+  src.connect(filt); filt.connect(g); g.connect(masterGain);
+  src.start(); src.stop(audioCtx.currentTime + duration + 0.05);
+}
+
+// ── Claim jingle — ascending arpeggio
+function soundClaim(pctClaimed) {
+  if (!audioCtx) return;
+  // scale based on how much was claimed — bigger claim = higher, brighter arp
+  const notes = pctClaimed > 20
+    ? [523, 659, 784, 1047]   // C5 E5 G5 C6
+    : [392, 494, 587, 784];   // G4 B4 D5 G5
+  notes.forEach((freq, i) => {
+    setTimeout(() => playTone(freq, 'triangle', 0.08, 0.22, 0.01, 0.12), i * 55);
+  });
+  // satisfying low thump
+  setTimeout(() => playNoise(0.12, 0.15, 200), 0);
+}
+
+// ── Level up fanfare
+function soundLevelUp() {
+  if (!audioCtx) return;
+  const melody = [523,659,784,1047,1319];
+  melody.forEach((freq, i) => {
+    setTimeout(() => playTone(freq, 'square', 0.1, 0.2, 0.01, 0.15), i * 80);
+  });
+  setTimeout(() => playTone(1319, 'triangle', 0.4, 0.25, 0.02, 0.5), melody.length * 80);
+}
+
+// ── Death explosion
+function soundDie() {
+  if (!audioCtx) return;
+  stopDrawTone();
+  // descending sweep
+  const o = audioCtx.createOscillator();
+  const g = audioCtx.createGain();
+  o.type = 'sawtooth';
+  o.frequency.setValueAtTime(600, audioCtx.currentTime);
+  o.frequency.exponentialRampToValueAtTime(40, audioCtx.currentTime + 0.6);
+  g.gain.setValueAtTime(0.3, audioCtx.currentTime);
+  g.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.65);
+  o.connect(g); g.connect(masterGain);
+  o.start(); o.stop(audioCtx.currentTime + 0.7);
+  // noise burst
+  playNoise(0.4, 0.3, 300);
+}
+
+// ── Game over stinger
+function soundGameOver() {
+  if (!audioCtx) return;
+  const notes = [392, 349, 330, 262];
+  notes.forEach((freq, i) => {
+    setTimeout(() => playTone(freq, 'square', 0.18, 0.2, 0.01, 0.2), i * 130);
+  });
+}
+
+// ── Sparx tick — subtle click each time a sparx steps
+let sparxTickAccum = 0;
+function soundSparxTick() {
+  if (!audioCtx) return;
+  playTone(1800 + Math.random()*400, 'sine', 0.01, 0.06, 0.002, 0.02);
+}
+
+// ─────────────────────────────────────────────
 //  STATE
 // ─────────────────────────────────────────────
 let grid, player, qixArr, sparxArr;
@@ -478,6 +641,7 @@ class Sparx {
       this.pathIdx = (this.pathIdx + this.dir + this.path.length) % this.path.length;
       const pos = this.path[this.pathIdx];
       this.r = pos.r; this.c = pos.c;
+      soundSparxTick();
     }
   }
 
@@ -529,6 +693,7 @@ function buildBorderPath() {
 function startGame() {
   document.getElementById('title-screen').style.display = 'none';
   document.getElementById('game-over-screen').style.display = 'none';
+  initAudio();
   score = 0; lives = 3; level = 1;
   initLevel();
   gameActive = true;
@@ -582,6 +747,7 @@ function die() {
   for (const cell of trailCells) grid[cell.r][cell.c] = 0;
   trailCells = [];
   drawing = false;
+  soundDie();
   lives--;
   updateHUD();
   if (lives <= 0) {
@@ -595,6 +761,7 @@ function die() {
 
 function endGame() {
   gameActive = false;
+  soundGameOver();
   document.getElementById('final-score').textContent = score;
   document.getElementById('game-over-screen').style.display = 'flex';
 }
@@ -625,7 +792,10 @@ function update(dt) {
   if (!wantDraw && drawing) {
     // stopped drawing — claim!
     if (trailCells.length > 0 && onBorder(player.r, player.c)) {
+      stopDrawTone();
+      const prevPct = claimedPct;
       claimTerritory();
+      soundClaim(claimedPct - prevPct);
       trailCells = [];
       drawing = false;
       // rebuild sparx path
@@ -637,7 +807,8 @@ function update(dt) {
       // check win
       if (claimedPct >= WIN_PCT) {
         level++;
-        setTimeout(() => initLevel(), 600);
+        soundLevelUp();
+        setTimeout(() => initLevel(), 800);
         return;
       }
     } else if (!onBorder(player.r, player.c)) {
@@ -668,10 +839,12 @@ function update(dt) {
         } else {
           // drawing — can move into unclaimed territory
           if (grid[nr][nc] === 0) {
+            if (!drawing) startDrawTone(player.fast);
             drawing = true;
             grid[player.r][player.c] = 2;
             trailCells.push({r:player.r, c:player.c});
             player.r = nr; player.c = nc;
+            updateDrawPitch();
           } else if (grid[nr][nc] === 1) {
             // stepped back onto border while drawing
             if (drawing) {
@@ -680,12 +853,15 @@ function update(dt) {
             }
             player.r = nr; player.c = nc;
             if (drawing && onBorder(player.r, player.c)) {
+              stopDrawTone();
+              const prevPct = claimedPct;
               claimTerritory();
+              soundClaim(claimedPct - prevPct);
               trailCells = [];
               drawing = false;
               sparxArr.forEach(s => { s.path = buildBorderPath(); s.pathIdx = s.pathIdx % s.path.length; });
               updateHUD();
-              if (claimedPct >= WIN_PCT) { level++; setTimeout(()=>initLevel(),600); return; }
+              if (claimedPct >= WIN_PCT) { level++; soundLevelUp(); setTimeout(()=>initLevel(),800); return; }
             }
           } else if (grid[nr][nc] === 2) {
             // hit own trail — die
